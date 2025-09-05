@@ -32,10 +32,9 @@ ENV/
 *.swo
 *~
 
-# Data files
-data/*.db
-data/*.sqlite
-data/*.sqlite3
+# Data files - 忽略所有数据库文件和相关文件
+data/*
+!data/.gitkeep
 
 # Results
 results/*.png
