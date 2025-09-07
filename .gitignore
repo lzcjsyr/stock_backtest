@@ -35,6 +35,9 @@ ENV/
 # Data files - 忽略所有数据库文件和相关文件
 data/*
 !data/.gitkeep
+!data/a_stock/
+data/a_stock/*
+!data/a_stock/.gitkeep
 
 # Results
 results/*.png

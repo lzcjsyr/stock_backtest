@@ -23,6 +23,8 @@ class AStockDataFetcher:
         self.request_delay = 1.0
         self.preferred_api = "stock_zh_a_hist"  # 默认首选API
         self.db_lock = threading.Lock()
+        self.request_count = 0  # 请求计数器
+        self.batch_size = 30    # 每批30次请求
     
     def set_preferred_api(self, api_name: str):
         """设置首选API"""
@@ -48,7 +50,8 @@ class AStockDataFetcher:
                 return func(*args, **kwargs)
             except Exception as e:
                 if attempt < self.max_retries - 1:
-                    logger.warning(f"第{attempt + 1}次尝试失败: {e}, 立即重试...")
+                    logger.warning(f"第{attempt + 1}次尝试失败: {e}, 10秒后重试...")
+                    time.sleep(10)  # 失败后等待10秒
                 else:
                     logger.error(f"重试{self.max_retries}次后仍然失败: {e}")
                     raise e
@@ -281,9 +284,16 @@ class AStockDataFetcher:
         """获取财务摘要数据（新API）"""
         import random
         
+        # 检查是否需要批次等待
+        if self.request_count >= self.batch_size:
+            wait_time = random.uniform(60, 180)  # 1-3分钟
+            logger.info(f"已完成 {self.request_count} 次请求，等待 {wait_time/60:.1f} 分钟...")
+            time.sleep(wait_time)
+            self.request_count = 0  # 重置计数器
+        
         def _fetch_financial_abstract():
-            # 随机延迟0-2秒，避免API限流
-            delay = random.uniform(0, 2.0)
+            # 每次请求间隔0-5秒
+            delay = random.uniform(0, 5.0)
             time.sleep(delay)
             
             try:
@@ -298,7 +308,6 @@ class AStockDataFetcher:
                 if "Expecting value" in error_msg:
                     # JSON解析错误，可能是API限流或返回非JSON内容
                     logger.warning(f"股票 {stock_code} JSON解析失败，可能API限流")
-                    time.sleep(random.uniform(3, 5))  # 额外等待3-5秒
                     raise Exception(f"API可能被限流，请稍后重试: {error_msg}")
                 elif "404" in error_msg or "Not Found" in error_msg:
                     # 股票可能已退市或不存在
@@ -308,7 +317,10 @@ class AStockDataFetcher:
                     raise e
         
         try:
-            return self.retry_on_failure(_fetch_financial_abstract)
+            result = self.retry_on_failure(_fetch_financial_abstract)
+            if result is not None:
+                self.request_count += 1  # 成功时增加计数器
+            return result
         except Exception as e:
             logger.warning(f"获取股票 {stock_code} 财务摘要失败: {e}")
             return None
