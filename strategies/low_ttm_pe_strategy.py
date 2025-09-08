@@ -4,8 +4,8 @@
 主板低TTM PE轮动策略
 
 策略描述：
-每月从沪深主板市值≥100亿的股票中，按TTM PE升序排列，
-选择前10只股票等权重持仓，次月第一个交易日调仓。
+每月从沪深主板市值≥X亿的股票中，按TTM PE升序排列，
+选择前N只股票等权重持仓，次月第一个交易日调仓。
 
 TTM PE = 股价 / TTM EPS
 TTM EPS = 最近12个月滚动每股收益
@@ -588,7 +588,7 @@ class LowTTMPEStrategy:
         
         wb.save(f"{result_dir}/backtest_results.xlsx")
     
-    def create_html_template(self, nav_data, params):
+    def create_html_template(self, nav_data, params, js_paths=None):
         """创建HTML图表模板"""
         
         # 准备数据
@@ -613,7 +613,20 @@ class LowTTMPEStrategy:
         js_dates = json.dumps([date.replace('-', '/') for date in dates])
         js_values = json.dumps([float(val) if hasattr(val, 'item') else val for val in values])
         
-        
+        # 决定脚本引入方式（优先本地文件）
+        if js_paths and all(k in js_paths for k in ("chart", "adapter", "annotation")):
+            script_tags = f"""
+    <script src="{js_paths['chart']}"></script>
+    <script src="{js_paths['adapter']}"></script>
+    <script src="{js_paths['annotation']}"></script>
+            """
+        else:
+            script_tags = """
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+            """
+
         html_content = f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -621,9 +634,7 @@ class LowTTMPEStrategy:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>策略回测图表</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    {script_tags}
     <style>
         * {{
             margin: 0;
@@ -655,15 +666,29 @@ class LowTTMPEStrategy:
         }}
         
         .header h1 {{
-            font-size: 32px;
+            font-size: 42px;
             font-weight: bold;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }}
+        
+        .header .nav-info {{
+            font-size: 26px;
+            opacity: 0.95;
+            font-weight: 600;
             margin-bottom: 8px;
         }}
         
-        .header p {{
-            font-size: 22px;
-            opacity: 0.9;
-            font-weight: 500;
+        .header .annual-return {{
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffff99;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            background: rgba(255,255,255,0.15);
+            padding: 8px 20px;
+            border-radius: 25px;
+            display: inline-block;
+            margin-top: 10px;
         }}
         
         .dashboard {{
@@ -700,12 +725,13 @@ class LowTTMPEStrategy:
         
         .params-section h3 {{
             color: #8b4513;
-            font-size: 24px;
+            font-size: 30px;
             margin-bottom: 25px;
             text-align: center;
             padding-bottom: 10px;
-            border-bottom: 2px solid #deb887;
+            border-bottom: 3px solid #deb887;
             grid-column: 1 / -1;
+            font-weight: bold;
         }}
         
         .param-group {{
@@ -714,19 +740,21 @@ class LowTTMPEStrategy:
         
         .param-group h4 {{
             color: #8b4513;
-            font-size: 18px;
+            font-size: 22px;
             margin-bottom: 12px;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: bold;
         }}
         
         .param-item {{
             color: #8b4513;
-            font-size: 16px;
+            font-size: 18px;
             line-height: 1.8;
             margin-left: 25px;
             position: relative;
+            font-weight: 500;
         }}
         
         .param-item:before {{
@@ -760,7 +788,8 @@ class LowTTMPEStrategy:
     <div class="container">
         <div class="header">
             <h1>{self.strategy_name}净值走势图</h1>
-            <p>最终净值: {final_nav:.2f} | 年化收益率: {annual_return:.2f}%</p>
+            <div class="nav-info">最终净值: {final_nav:.2f}</div>
+            <div class="annual-return">📈 年化收益率: {annual_return:.2f}%</div>
         </div>
         
         <div class="dashboard">
@@ -866,6 +895,14 @@ class LowTTMPEStrategy:
                             borderWidth: 2,
                             cornerRadius: 8,
                             displayColors: false,
+                            titleFont: {{
+                                size: 16,
+                                weight: 'bold'
+                            }},
+                            bodyFont: {{
+                                size: 15,
+                                weight: '500'
+                            }},
                             callbacks: {{
                                 title: function(context) {{
                                     return '日期: ' + context[0].label;
@@ -885,7 +922,7 @@ class LowTTMPEStrategy:
                             ticks: {{
                                 color: '#8b4513',
                                 font: {{
-                                    size: 12,
+                                    size: 16,
                                     weight: 'bold'
                                 }},
                                 maxRotation: 0,
@@ -923,7 +960,7 @@ class LowTTMPEStrategy:
                                 text: '日期',
                                 color: '#8b4513',
                                 font: {{
-                                    size: 14,
+                                    size: 20,
                                     weight: 'bold'
                                 }}
                             }}
@@ -938,7 +975,7 @@ class LowTTMPEStrategy:
                             ticks: {{
                                 color: '#8b4513',
                                 font: {{
-                                    size: 12,
+                                    size: 16,
                                     weight: 'bold'
                                 }},
                                 callback: function(value) {{
@@ -950,7 +987,7 @@ class LowTTMPEStrategy:
                                 text: '净值',
                                 color: '#8b4513',
                                 font: {{
-                                    size: 14,
+                                    size: 20,
                                     weight: 'bold'
                                 }}
                             }}
@@ -999,8 +1036,18 @@ class LowTTMPEStrategy:
             'end_date': self.end_date
         }
         
-        # 生成HTML内容
-        html_content = self.create_html_template(self.nav_history, params)
+        # 计算本地JS相对路径（从结果目录到项目根的 assets/js）
+        # result_dir: <project_root>/results/<timestamp_dir>
+        # html 相对到 assets/js 为 ../../assets/js
+        local_js_prefix = "../../assets/js"
+        js_paths = {
+            'chart': f"{local_js_prefix}/chart.umd.js",
+            'adapter': f"{local_js_prefix}/chartjs-adapter-date-fns.bundle.min.js",
+            'annotation': f"{local_js_prefix}/chartjs-plugin-annotation.min.js"
+        }
+
+        # 生成HTML内容（优先使用本地脚本）
+        html_content = self.create_html_template(self.nav_history, params, js_paths=js_paths)
         
         # 创建临时HTML文件 - 使用固定路径避免权限问题
         temp_html_path = f"{result_dir}/temp_chart.html"
@@ -1034,8 +1081,8 @@ class LowTTMPEStrategy:
                 # 设置页面大小
                 page.set_viewport_size({"width": 1600, "height": 900})
                 
-                # 加载HTML文件，使用基本的domcontentloaded
-                page.goto(f"file://{html_path}", wait_until="domcontentloaded")
+                # 加载HTML文件，快速提交后依赖 chartReady 判断渲染完成
+                page.goto(f"file://{html_path}", wait_until="commit")
                 
                 # 等待更长时间确保CDN资源加载
                 page.wait_for_timeout(5000)
@@ -1129,7 +1176,7 @@ if __name__ == "__main__":
     TRANSACTION_COST = 0.0001   # 交易手续费率 - 万分之一，可根据券商调整
     
     # 回测时间范围 (精确到月)
-    START_DATE = "2020-01-01"   # 回测开始日期 - 格式：YYYY-MM-DD
+    START_DATE = "2010-01-01"   # 回测开始日期 - 格式：YYYY-MM-DD
     END_DATE = "2025-06-30"     # 回测结束日期 - 格式：YYYY-MM-DD
     
     # ==================== 不同资金规模建议 ====================
