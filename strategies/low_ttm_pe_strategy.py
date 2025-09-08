@@ -127,6 +127,11 @@ class LowTTMPEStrategy:
         
         return required_dates, mode
     
+    def _return_empty_selection(self, selection_date):
+        """处理选股失败的情况"""
+        print(f"❌ {selection_date} 选股失败，无有效数据")
+        return pd.DataFrame()
+    
     def calculate_ttm_eps_from_data(self, eps_data, required_dates, mode):
         """
         基于已获取的EPS数据计算TTM EPS
@@ -219,7 +224,7 @@ class LowTTMPEStrategy:
         # ========= 批量计算 TTM EPS（使用统一逻辑） =========
         required_dates, mode = self.get_ttm_required_dates(selection_date)
         
-        codes = candidates['stock_code'].dropna().astype(str).unique().tolist()
+        codes = candidates['stock_code'].dropna().astype(str).str.zfill(6).unique().tolist()
         if len(codes) == 0:
             print(f"❌ {selection_date} 无有效股票代码")
             return pd.DataFrame()
@@ -417,7 +422,7 @@ class LowTTMPEStrategy:
         if positions.empty:
             return total_return
 
-        codes = positions['stock_code'].dropna().astype(str).unique().tolist()
+        codes = positions['stock_code'].dropna().astype(str).str.zfill(6).unique().tolist()
         if len(codes) == 0:
             return total_return
 
