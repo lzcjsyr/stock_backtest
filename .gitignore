@@ -39,16 +39,18 @@ data/*
 data/a_stock/*
 !data/a_stock/.gitkeep
 
-# Results
+# Results - 忽略所有策略回测结果文件
+results/*/
+results/*.xlsx
 results/*.png
 results/*.jpg
 results/*.jpeg
-results/charts/*.png
-results/charts/*.jpg
-results/charts/*.jpeg
 results/*.csv
 results/*.txt
-results/charts/*.txt
+results/*.md
+results/*.html
+results/*.json
+!results/.gitkeep
 
 # Logs
 *.log
