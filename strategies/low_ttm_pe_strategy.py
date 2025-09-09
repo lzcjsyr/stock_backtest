@@ -1041,18 +1041,9 @@ class LowTTMPEStrategy:
             'end_date': self.end_date
         }
         
-        # 计算本地JS相对路径（从结果目录到项目根的 assets/js）
-        # result_dir: <project_root>/results/<timestamp_dir>
-        # html 相对到 assets/js 为 ../../assets/js
-        local_js_prefix = "../../assets/js"
-        js_paths = {
-            'chart': f"{local_js_prefix}/chart.umd.js",
-            'adapter': f"{local_js_prefix}/chartjs-adapter-date-fns.bundle.min.js",
-            'annotation': f"{local_js_prefix}/chartjs-plugin-annotation.min.js"
-        }
-
-        # 生成HTML内容（优先使用本地脚本）
-        html_content = self.create_html_template(self.nav_history, params, js_paths=js_paths)
+        # 由于不存在本地JS文件，直接使用CDN
+        # 生成HTML内容（使用CDN脚本）
+        html_content = self.create_html_template(self.nav_history, params, js_paths=None)
         
         # 创建临时HTML文件 - 使用固定路径避免权限问题
         temp_html_path = f"{result_dir}/temp_chart.html"
@@ -1181,7 +1172,7 @@ if __name__ == "__main__":
     TRANSACTION_COST = 0.0001   # 交易手续费率 - 万分之一，可根据券商调整
     
     # 回测时间范围 (精确到月)
-    START_DATE = "2010-01-01"   # 回测开始日期 - 格式：YYYY-MM-DD
+    START_DATE = "2020-01-01"   # 回测开始日期 - 格式：YYYY-MM-DD
     END_DATE = "2025-06-30"     # 回测结束日期 - 格式：YYYY-MM-DD
     
     # ==================== 不同资金规模建议 ====================
