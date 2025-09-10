@@ -1,297 +1,241 @@
 # 📈 股票回测系统
 
-基于AKShare的量化投资策略回测平台，采用SQLite多文件存储架构，支持策略开发、回测分析和结果可视化。
+专业的A股量化投资策略回测平台，采用模块化设计和现代化技术栈，为量化交易提供完整的数据管理、策略开发、回测分析和结果可视化解决方案。
 
-## 🎯 项目特性
+## 🎯 核心特性
 
-- 💻 **命令行界面**: 简洁的CLI交互，易于操作和自动化
-- 📡 **数据管理**: 基于AKShare获取A股实时数据，支持多数据源扩展
-- 🗄️ **高效存储**: SQLite多文件架构，价格数据和基本信息分离存储
-- 📊 **策略框架**: 标准化策略开发模板，支持快速策略实现
-- 📈 **专业图表**: HTML+Chart.js技术生成高质量净值图表
-- 📋 **完整报告**: Excel详细数据 + PNG图表 + README文档
+- 💻 **智能数据管理**: 支持A股全量数据获取，多API容错机制确保数据稳定性
+- 🗄️ **高效存储架构**: SQLite分离式存储设计，优化查询性能和数据管理
+- 📊 **标准化策略框架**: 参数化配置，快速策略开发和部署
+- 📈 **专业级可视化**: HTML5+Chart.js生成高质量净值图表
+- 📋 **完整分析报告**: Excel数据表 + PNG图表 + 详细分析文档
+- 🔧 **可扩展架构**: 支持多资产类型和策略类型扩展
 
-## 🏗️ 项目架构
+## 🏗️ 系统架构
 
 ```
 股票回测系统/
-├── main.py                    # 主程序入口 - CLI交互界面
-├── data_downloader/           # 数据下载管理模块
-│   ├── router.py             # 数据路由和菜单管理
-│   ├── a_stock.py            # A股数据下载器
-│   ├── db_writer.py          # 数据库写入管理
-│   └── cli_interface.py      # 命令行交互界面
-├── strategies/                # 量化策略模块
-│   └── low_ttm_pe_strategy.py # 低TTM PE策略(样板)
-├── src/                       # 核心功能模块
-│   ├── database.py           # 数据库统一接口
-│   ├── sqlite_database.py    # SQLite多文件数据库
-│   └── visualizer.py         # 图表可视化引擎
-├── data/                      # 数据存储目录
-│   ├── stock_basic.db        # 股票基本信息数据库
-│   ├── stock_prices.db       # 股票价格数据库
-│   └── stock_metadata.db     # 元数据配置数据库
-├── assets/js/                 # 前端资源文件
-│   └── (Chart.js相关库)       # 图表生成依赖
-├── results/                   # 策略回测结果
-│   └── [策略名_时间戳]/       # 每次回测的完整结果
-└── requirements.txt           # Python依赖包列表
+├── downloader/                # 数据管理模块
+│   ├── __main__.py           # 模块入口
+│   ├── cli.py                # 命令行界面
+│   ├── router.py             # 数据路由协调器
+│   └── sources/              # 数据源模块
+│       └── a_stock/          # A股数据源
+│           ├── initializer.py # 数据库初始化器
+│           ├── fetcher.py    # 数据获取器(多API容错)
+│           ├── writer.py     # 数据存储管理器
+│           └── interface.py  # CLI交互界面
+├── strategies/               # 量化策略模块
+│   └── low_ttm_pe_strategy.py # 低TTM PE策略实现
+├── downloader/visualizer.py  # 传统图表引擎(可选)
+├── data/                     # 数据存储目录
+│   └── a_stock/             # A股数据库文件
+│       └── a_stock_data.db  # SQLite数据库
+├── results/                  # 策略回测结果
+│   └── [策略名_时间戳]/      # 每次回测的完整输出
+└── requirements.txt          # Python依赖清单
 ```
 
-## 💡 系统设计
+## 💡 系统设计理念
 
-### 程序运行流程
+### 模块化分离架构
 
-1. **启动系统**: 运行 `python main.py` 进入命令行界面
-2. **功能选择**: 
-   - **数据管理**: 进入多资产数据下载和管理
-   - **策略回测**: 选择已开发的量化策略进行回测
-3. **数据管理流程**: 选择资产类型 → 选择数据类型 → 自动下载更新
-4. **策略回测流程**: 选择策略 → 自动运行回测 → 生成完整报告
-5. **结果输出**: 回测结果自动保存到 `results/[策略名_时间戳]/` 目录
+**数据管理层**: `downloader/` 模块专注于数据获取、清洗、存储，支持多数据源和多资产类型扩展。采用分层设计：路由协调器 → 数据获取器 → 存储管理器，确保数据流的清晰和可控。
+
+**策略开发层**: `strategies/` 模块提供标准化策略开发框架，参数化配置设计，支持快速策略实现和回测验证。
+
+**可视化分析层**: 内置现代化图表生成引擎，支持HTML5交互式图表和传统静态图表两种模式。
+
+### 系统使用流程
+
+1. **数据准备**: 运行 `python -m downloader` 进入数据管理界面
+   - 选择A股数据源 → 下载股票列表 → 获取基本信息 → 更新K线数据 → 获取财务摘要
+2. **策略回测**: 运行策略文件进行回测分析
+   - 配置策略参数 → 执行回测计算 → 生成分析报告
+3. **结果分析**: 查看 `results/` 目录下的回测报告
+   - Excel详细数据表 → PNG高质量图表 → README分析文档
 
 ## 📊 数据存储架构
 
-### SQLite多文件存储设计
+### SQLite单文件集成设计
 
-采用 **SQLite多文件存储架构**，按数据类型分离存储，提升查询性能和维护便利性：
+采用 **SQLite单文件集成架构** (`data/a_stock/a_stock_data.db`)，将所有A股相关数据统一管理，简化部署和维护：
 
-- **stock_basic.db**: 股票基本信息（代码、名称、行业、上市日期等）
-- **stock_prices.db**: 股票价格数据（日K线数据，支持高频查询）
-- **stock_metadata.db**: 系统元数据（数据状态、配置信息等）
+**核心数据表**:
+- **stock_list**: 股票清单主表（股票代码、名称、市场标识）  
+- **stock_basic_info**: 基本信息表（市值、行业、上市日期等详细信息）
+- **stock_daily_kline**: K线数据表（OHLCV日线数据，支持高频查询）
+- **stock_financial_abstract**: 财务摘要表（80个财务指标的结构化存储）
 
-### 数据表结构设计
+### 数据获取机制
 
-#### 1. 股票基本信息表 (stock_info)
+**多API容错设计**: 数据获取器实现三重备用机制，自动在东方财富、新浪财经、腾讯证券间切换，确保数据获取稳定性。
 
-**存储位置**: `data/stock_basic.db`
+**智能重试机制**: 内置指数退避重试算法，网络异常时自动重试，提高数据获取成功率。
 
-**数据源**: AKShare股票基本信息接口
-
-```sql
-CREATE TABLE stock_info (
-    stock_code TEXT PRIMARY KEY,        -- 股票代码 (6位)
-    stock_name TEXT NOT NULL,           -- 股票简称
-    market TEXT DEFAULT 'A',            -- 市场标识
-    list_date DATE,                     -- 上市日期
-    industry TEXT,                      -- 所属行业
-    concept TEXT,                       -- 概念板块
-    is_active INTEGER DEFAULT 1,        -- 是否活跃 (1:活跃, 0:停牌)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-#### 2. 股票价格数据表 (stock_daily_prices)
-
-**存储位置**: `data/stock_prices.db`
-
-**数据源**: AKShare日K线数据（前复权）
-
-```sql
-CREATE TABLE stock_daily_prices (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    stock_code TEXT NOT NULL,           -- 股票代码
-    trade_date DATE NOT NULL,           -- 交易日期
-    open_price REAL NOT NULL,           -- 开盘价
-    high_price REAL NOT NULL,           -- 最高价
-    low_price REAL NOT NULL,            -- 最低价
-    close_price REAL NOT NULL,          -- 收盘价
-    volume INTEGER NOT NULL,            -- 成交量
-    amount REAL NOT NULL,               -- 成交额
-    pct_change REAL,                    -- 涨跌幅(%)
-    price_change REAL,                  -- 涨跌额
-    turnover_rate REAL,                 -- 换手率(%)
-    amplitude REAL,                     -- 振幅(%)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(stock_code, trade_date)      -- 防重复约束
-);
-```
-
-#### 3. 系统元数据表 (data_status)
-
-**存储位置**: `data/stock_metadata.db`
-
-**用途**: 追踪数据更新状态和系统配置
-
-```sql
-CREATE TABLE data_status (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    table_name TEXT NOT NULL,           -- 表名
-    stock_code TEXT,                    -- 股票代码(可选)
-    start_date DATE,                    -- 数据起始日期
-    end_date DATE,                      -- 数据截止日期
-    record_count INTEGER DEFAULT 0,     -- 记录数量
-    last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status TEXT DEFAULT 'active'       -- 数据状态
-);
-```
-
-### 数据库索引设计
-
-为提升查询性能，系统为关键字段创建了适当的索引：
-
-#### SQLite索引策略
-
-```sql
--- 股票基本信息表索引
-CREATE INDEX idx_industry ON stock_info(industry);
-CREATE INDEX idx_is_active ON stock_info(is_active);
-
--- 股票价格数据表索引  
-CREATE INDEX idx_stock_code ON stock_daily_prices(stock_code);
-CREATE INDEX idx_trade_date ON stock_daily_prices(trade_date);
-CREATE INDEX idx_stock_date ON stock_daily_prices(stock_code, trade_date);
-CREATE INDEX idx_close_price ON stock_daily_prices(close_price);
-```
+**数据规范化**: 统一不同API的数据格式和字段命名，确保数据一致性和可靠性。
 
 ## 🚀 快速开始
 
-### 环境准备
+### 环境配置
 
-#### 1. Python环境
+#### 1. Python环境要求
 ```bash
 # 确保Python版本 >= 3.8
 python --version
 ```
 
-#### 2. 安装依赖包
+#### 2. 依赖包安装
 ```bash
-# 安装所有依赖
+# 克隆或下载项目后，安装依赖
 pip install -r requirements.txt
 
-# 如果需要图表生成功能，需要安装浏览器
+# 安装Playwright浏览器(图表生成必需)
 playwright install chromium
 ```
 
-### 系统启动
+### 系统使用
 
+#### 1. 数据管理
 ```bash
-# 启动主程序
-python main.py
+# 启动数据管理模块
+python -m downloader
+
+# 按照菜单提示操作：
+# 选择A股数据 → 下载股票清单 → 获取基本信息 → 更新K线数据 → 获取财务数据
 ```
 
-### 首次使用流程
+#### 2. 策略回测
+```bash
+# 直接运行策略文件
+python strategies/low_ttm_pe_strategy.py
 
-1. **启动系统** → 选择 "1. 📡 数据管理"
-2. **选择资产类型** → "A股数据" 
-3. **下载基础数据** → 选择要下载的数据类型（股票列表、价格数据等）
-4. **等待下载完成** → 系统自动保存到本地数据库
-5. **运行策略回测** → 返回主菜单选择 "2. 📊 策略回测"
-6. **查看结果** → 回测报告自动保存到 `results/` 目录
+# 或导入使用
+from strategies.low_ttm_pe_strategy import run_backtest
+run_backtest(min_market_cap=100, stock_count=10)
+```
+
+#### 3. 查看结果
+回测完成后，结果自动保存到 `results/[策略名_时间戳]/` 目录：
+- `backtest_results.xlsx` - Excel详细数据
+- `net_value_chart.png` - 高质量净值图表  
+- `README.md` - 策略分析报告
 
 ## 📊 量化策略开发
 
-### 现有策略
+### 内置策略示例
 
-#### 1. 低TTM PE轮动策略 (`low_ttm_pe_strategy.py`)
+#### 主板低TTM PE轮动策略
 
-**策略描述**: 每月从沪深主板市值≥100亿的股票中，按TTM PE升序排列，选择前10只股票等权重持仓
+**策略逻辑**: 每月从沪深主板市值≥100亿的股票中，按TTM PE升序排列，选择前10只股票等权重持仓
 
-**核心特点**:
-- 选股范围: 沪深主板(6开头+0开头)，排除创业板和科创板
-- 市值过滤: 最低市值100亿元，确保流动性
-- TTM PE计算: 基于滚动12个月EPS，避免季节性影响
-- 调仓频率: 月度调仓，平衡收益与成本
-- 权重分配: 等权重配置，降低个股风险
+**核心设计**:
+- **选股池**: 沪深主板(6/0开头)，市值≥100亿，确保流动性
+- **指标计算**: TTM PE基于滚动12个月EPS，避免季节性干扰
+- **调仓策略**: 月末选股，次月首日调仓，平衡收益与成本
+- **风险控制**: 等权重配置，分散个股集中度风险
 
-**策略参数**:
-- `MIN_MARKET_CAP`: 最低市值要求(亿元)，默认100
-- `STOCK_COUNT`: 选股数量，默认10只
-- `TRANSACTION_COST`: 交易手续费率，默认万1
-- `START_DATE`/`END_DATE`: 回测时间范围
+**参数化配置**:
+```python
+MIN_MARKET_CAP = 100.0    # 最低市值(亿元)，范围：50-500
+STOCK_COUNT = 10          # 选股数量，范围：5-30  
+TRANSACTION_COST = 0.0001 # 交易成本，默认万分之一
+START_DATE = "2020-01-01" # 回测起始日期
+END_DATE = "2025-06-30"   # 回测结束日期
+```
 
-**回测报告**:
-- Excel详细数据表格
-- HTML高质量净值图表
-- 完整策略说明文档
+**输出报告**:
+- **Excel数据表**: 策略概览、选股详情、盈亏分析三个工作表
+- **PNG净值图表**: HTML5+Chart.js生成的高质量可视化图表
+- **README文档**: 策略业绩分析和风险特征总结
 
-### 策略扩展能力
+### 策略开发框架
 
-系统设计支持快速添加新策略:
-- 标准化策略接口
-- 统一的回测框架
-- 自动化报告生成
-- 参数化配置支持
+**标准接口**: 统一的`run_backtest()`函数接口，支持参数化配置和批量测试
 
-### 添加新策略步骤
+**数据访问**: 直接访问SQLite数据库，支持复杂查询和数据处理
 
-1. 在 `strategies/` 目录创建新的 `.py` 文件
-2. 实现 `run_backtest()` 函数
-3. 使用统一的数据库接口获取数据
-4. 调用回测框架生成报告
-5. 通过主程序菜单直接运行
+**结果输出**: 自动生成Excel、PNG、README三种格式的完整分析报告
 
-## 🛠️ 技术架构
+**扩展支持**: 模块化设计支持多因子策略、技术分析策略、行业轮动策略等快速开发
+
+## 🛠️ 技术特性
 
 ### 核心技术栈
-- **数据源**: AKShare - A股数据获取
-- **存储**: SQLite多文件架构 - 高性能本地存储
-- **数据处理**: pandas + numpy - 高效数据分析
-- **可视化**: HTML + Chart.js - 专业级图表
-- **表格输出**: openpyxl - Excel详细报告
-- **截图生成**: Playwright - 高质量图像输出
+- **数据获取**: AKShare多API容错机制，支持东方财富/新浪财经/腾讯证券
+- **数据存储**: SQLite单文件集成，支持复杂查询和事务管理
+- **数据处理**: pandas+numpy高效数据分析和计算
+- **图表生成**: HTML5+Chart.js现代化交互图表 + Playwright高质量截图
+- **报表输出**: openpyxl专业Excel报告 + Markdown分析文档
 
-### 开发环境要求
+### 系统依赖
 
 ```bash
-# Python版本
-Python >= 3.8
-
-# 核心依赖
-akshare >= 1.12.0      # 数据获取
-pandas >= 2.0.0        # 数据处理
+# 核心依赖包
+akshare >= 1.12.0      # A股数据获取
+pandas >= 2.0.0        # 数据分析处理  
 numpy >= 1.24.0        # 数值计算
-matplotlib >= 3.7.0    # 基础绘图
-playwright >= 1.40.0   # 浏览器自动化
-openpyxl >= 3.1.0      # Excel处理
+openpyxl >= 3.1.0      # Excel报告生成
+playwright >= 1.40.0   # 无头浏览器截图
+
+# 可视化支持
+matplotlib >= 3.7.0    # 传统图表(可选)
+seaborn >= 0.12.0      # 统计图表(可选)
+
+# 系统工具
+tqdm >= 4.65.0         # 进度条显示
+pymongo >= 4.0.0       # MongoDB扩展支持
 ```
 
-## 📁 回测结果结构
+## 📁 回测结果示例
 
-每次运行策略回测会在 `results/` 目录下生成完整的结果文件夹:
+每次策略回测自动生成时间戳命名的结果目录：
 
 ```
-results/
-└── 主板低TTM_PE策略_0908_1425/
-    ├── backtest_results.xlsx    # Excel详细数据
-    │   ├── Strategy_Overview    # 策略概览工作表
-    │   └── Stock_Selection      # 选股详情工作表
-    ├── net_value_chart.png      # 高质量净值走势图
-    └── README.md                # 策略回测报告
+results/主板低TTM_PE策略_0910_2308/
+├── backtest_results.xlsx      # Excel详细数据表
+│   ├── Strategy_Overview      # 策略概览与业绩指标
+│   ├── Stock_Selection        # 逐期选股详情
+│   └── Period_Analysis        # 盈亏周期分析
+├── net_value_chart.png        # 专业净值走势图表
+└── README.md                  # 策略分析报告文档
 ```
 
-## 🔄 系统扩展规划
+## 🔄 扩展规划
 
-### 数据源扩展
-- 港股数据支持
-- 美股数据支持  
-- 基金数据支持
-- 指数数据支持
+### 多资产支持
+系统已预留多资产扩展接口，未来可支持：
+- 港股通数据
+- 美股ADR数据
+- 基金净值数据
+- 期货合约数据
 
-### 策略类型扩展
-- 技术分析策略
-- 多因子策略
-- 行业轮动策略
-- 量化套利策略
+### 策略类型丰富
+- 技术指标策略（RSI、MACD、布林带）
+- 多因子量化模型（Fama-French、Barra）
+- 行业轮动策略（景气度、盈利预测）
+- 事件驱动策略（财报、重组、分红）
 
-### 功能增强
-- 策略组合回测
-- 风险指标分析
-- 基准比较分析
-- 实盘交易接口
+### 功能增强路径
+- 策略组合优化与风险预算
+- 基准指数比较分析
+- 归因分析与风险分解
+- 实盘交易信号生成
 
-## ⚠️ 免责声明
+## 🎯 项目定位
 
-本系统仅供学习研究使用，所有回测结果不构成投资建议。
-历史业绩不代表未来表现，投资有风险，决策需谨慎。
+本系统专注于**A股量化投资策略的研究和验证**，为个人投资者和量化研究人员提供：
 
-## 📞 技术支持
+- **教学工具**: 理解量化投资的基本流程和技术实现
+- **研究平台**: 快速验证投资策略的历史表现和风险特征  
+- **开发框架**: 基于真实数据的策略原型开发和测试环境
 
-如有问题或建议，欢迎通过以下方式联系:
-- 创建 Issue 反馈问题
-- 提交 Pull Request 贡献代码
+## ⚠️ 重要声明
+
+- **学术用途**: 本系统仅供教学和研究使用，不构成任何投资建议
+- **风险提示**: 历史回测结果不代表未来表现，投资有风险，决策需谨慎
+- **数据来源**: 所有数据来源于公开渠道，不保证数据的实时性和完整性
 
 ---
 
-*📊 用数据驱动投资决策，让量化分析成为您的投资利器！*
+*📊 让量化分析成为投资决策的科学工具*

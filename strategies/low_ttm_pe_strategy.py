@@ -52,6 +52,7 @@ class LowTTMPEStrategy:
         # 结果存储
         self.positions = []  # 持仓记录
         self.nav_history = []  # 净值历史
+        self.period_returns = []  # 每期收益记录
         
         # 交易日缓存
         self._trading_dates_cache = None
@@ -370,6 +371,16 @@ class LowTTMPEStrategy:
                     current_positions, prev_selection_date, selection_date)
                 current_nav *= (1 + period_return - self.transaction_cost)
                 print(f"📈 期间收益率: {period_return*100:.2f}%, 净值: {current_nav:.4f}")
+                
+                # 记录期间收益
+                self.period_returns.append({
+                    'period': i,
+                    'start_date': prev_selection_date,
+                    'end_date': selection_date,
+                    'return': period_return,
+                    'nav_before': current_nav / (1 + period_return - self.transaction_cost),
+                    'nav_after': current_nav
+                })
             
             # 更新持仓
             current_positions = selected_stocks.copy()
@@ -401,6 +412,16 @@ class LowTTMPEStrategy:
                 current_positions, prev_selection_date, self.end_date)
             current_nav *= (1 + final_return - self.transaction_cost)
             print(f"📈 最后一期收益率: {final_return*100:.2f}%, 净值: {current_nav:.4f}")
+            
+            # 记录最后一期收益
+            self.period_returns.append({
+                'period': len(self.positions) + 1,
+                'start_date': prev_selection_date,
+                'end_date': self.end_date,
+                'return': final_return,
+                'nav_before': current_nav / (1 + final_return - self.transaction_cost),
+                'nav_after': current_nav
+            })
             
             # 记录最后净值
             self.nav_history.append({
@@ -455,6 +476,78 @@ class LowTTMPEStrategy:
 
         total_return = float((merged['stock_return'] * merged['weight']).sum())
         return total_return
+    
+    def calculate_risk_metrics(self):
+        """计算风险指标"""
+        if not self.nav_history:
+            return {}
+        
+        nav_values = [item['nav'] for item in self.nav_history]
+        
+        # 最大回撤
+        peak = nav_values[0]
+        max_drawdown = 0
+        for nav in nav_values:
+            if nav > peak:
+                peak = nav
+            drawdown = (peak - nav) / peak
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+        
+        # 波动率（年化）
+        if len(self.period_returns) > 1:
+            returns = [item['return'] for item in self.period_returns]
+            volatility = pd.Series(returns).std() * (12 ** 0.5)  # 月度数据年化
+        else:
+            volatility = 0
+        
+        # 夏普比率（假设无风险利率3%）
+        risk_free_rate = 0.03
+        final_nav = nav_values[-1]
+        years = (pd.to_datetime(self.end_date) - pd.to_datetime(self.start_date)).days / 365.25
+        annual_return = (final_nav ** (1/years) - 1) if years > 0 else 0
+        sharpe_ratio = (annual_return - risk_free_rate) / volatility if volatility > 0 else 0
+        
+        return {
+            'max_drawdown': max_drawdown,
+            'volatility': volatility,
+            'sharpe_ratio': sharpe_ratio
+        }
+    
+    def analyze_profit_loss_cycles(self):
+        """分析盈亏周期"""
+        if not self.period_returns:
+            return {}
+        
+        profit_periods = [r for r in self.period_returns if r['return'] > 0]
+        loss_periods = [r for r in self.period_returns if r['return'] <= 0]
+        
+        # 连续盈亏分析
+        consecutive_profit = 0
+        consecutive_loss = 0
+        max_consecutive_profit = 0
+        max_consecutive_loss = 0
+        current_profit_streak = 0
+        current_loss_streak = 0
+        
+        for period in self.period_returns:
+            if period['return'] > 0:
+                current_profit_streak += 1
+                current_loss_streak = 0
+                max_consecutive_profit = max(max_consecutive_profit, current_profit_streak)
+            else:
+                current_loss_streak += 1
+                current_profit_streak = 0
+                max_consecutive_loss = max(max_consecutive_loss, current_loss_streak)
+        
+        return {
+            'total_periods': len(self.period_returns),
+            'profit_periods': len(profit_periods),
+            'loss_periods': len(loss_periods),
+            'profit_rate': len(profit_periods) / len(self.period_returns) if self.period_returns else 0,
+            'max_consecutive_profit': max_consecutive_profit,
+            'max_consecutive_loss': max_consecutive_loss
+        }
     
     def generate_reports(self):
         """生成回测报告"""
@@ -556,12 +649,20 @@ class LowTTMPEStrategy:
             years = (pd.to_datetime(self.end_date) - pd.to_datetime(self.start_date)).days / 365.25
             annual_return = (final_nav ** (1/years) - 1) * 100 if years > 0 else 0
             
+            # 计算风险指标
+            risk_metrics = self.calculate_risk_metrics()
+            profit_loss_stats = self.analyze_profit_loss_cycles()
+            
             performance = [
                 ["总收益率", f"{total_return:.2f}%"],
                 ["最终净值", f"{final_nav:.4f}"],
                 ["年化收益率", f"{annual_return:.2f}%"],
+                ["最大回撤", f"{risk_metrics.get('max_drawdown', 0)*100:.2f}%"],
+                ["夏普比率", f"{risk_metrics.get('sharpe_ratio', 0):.2f}"],
                 ["调仓次数", f"{total_periods}次"],
-                ["平均月收益率", f"{total_return/total_periods:.2f}%" if total_periods > 0 else "N/A"]
+                ["胜率", f"{profit_loss_stats.get('profit_rate', 0)*100:.1f}%"],
+                ["最大连续盈利", f"{profit_loss_stats.get('max_consecutive_profit', 0)}期"],
+                ["最大连续亏损", f"{profit_loss_stats.get('max_consecutive_loss', 0)}期"]
             ]
             
             for key, value in performance:
@@ -591,6 +692,24 @@ class LowTTMPEStrategy:
                 ws_selection.cell(row, 10, f"{stock['weight']*100:.1f}%")
                 row += 1
         
+        # 盈亏周期分析工作表
+        ws_period_analysis = wb.create_sheet("Period_Analysis")
+        period_headers = ["期数", "开始日期", "结束日期", "期间收益率", "期初净值", "期末净值", "盈亏状态"]
+        
+        for i, header in enumerate(period_headers, 1):
+            ws_period_analysis.cell(1, i, header)
+        
+        row = 2
+        for period in self.period_returns:
+            ws_period_analysis.cell(row, 1, period['period'])
+            ws_period_analysis.cell(row, 2, period['start_date'])
+            ws_period_analysis.cell(row, 3, period['end_date'])
+            ws_period_analysis.cell(row, 4, f"{period['return']*100:.2f}%")
+            ws_period_analysis.cell(row, 5, f"{period['nav_before']:.4f}")
+            ws_period_analysis.cell(row, 6, f"{period['nav_after']:.4f}")
+            ws_period_analysis.cell(row, 7, "盈利" if period['return'] > 0 else "亏损")
+            row += 1
+        
         wb.save(f"{result_dir}/backtest_results.xlsx")
     
     def create_html_template(self, nav_data, params, js_paths=None):
@@ -604,6 +723,11 @@ class LowTTMPEStrategy:
         final_nav = values[-1] if values else 1.0
         years = (pd.to_datetime(self.end_date) - pd.to_datetime(self.start_date)).days / 365.25
         annual_return = (final_nav ** (1/years) - 1) * 100 if years > 0 else 0
+        
+        # 计算风险指标
+        risk_metrics = self.calculate_risk_metrics()
+        max_drawdown = risk_metrics.get('max_drawdown', 0) * 100
+        sharpe_ratio = risk_metrics.get('sharpe_ratio', 0)
         
         # 计算纵轴范围
         min_val = min(values) if values else 1.0
@@ -793,8 +917,8 @@ class LowTTMPEStrategy:
     <div class="container">
         <div class="header">
             <h1>{self.strategy_name}净值走势图</h1>
-            <div class="nav-info">最终净值: {final_nav:.2f}</div>
-            <div class="annual-return">📈 年化收益率: {annual_return:.2f}%</div>
+            <div class="nav-info">最终净值: {final_nav:.2f} | 最大回撤: {max_drawdown:.2f}%</div>
+            <div class="annual-return">📈 年化收益率: {annual_return:.2f}% | 夏普比率: {sharpe_ratio:.2f}</div>
         </div>
         
         <div class="dashboard">
@@ -1041,9 +1165,31 @@ class LowTTMPEStrategy:
             'end_date': self.end_date
         }
         
-        # 由于不存在本地JS文件，直接使用CDN
-        # 生成HTML内容（使用CDN脚本）
-        html_content = self.create_html_template(self.nav_history, params, js_paths=None)
+        # 检查本地JS文件是否存在
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(script_dir)
+        assets_dir = os.path.join(project_root, "assets", "js")
+        
+        js_paths = None
+        if os.path.exists(assets_dir):
+            chart_js = os.path.join(assets_dir, "chart.umd.js")
+            adapter_js = os.path.join(assets_dir, "chartjs-adapter-date-fns.bundle.min.js")
+            annotation_js = os.path.join(assets_dir, "chartjs-plugin-annotation.min.js")
+            
+            if all(os.path.exists(f) for f in [chart_js, adapter_js, annotation_js]):
+                js_paths = {
+                    'chart': chart_js,
+                    'adapter': adapter_js,
+                    'annotation': annotation_js
+                }
+                print("📁 使用本地JS文件生成图表")
+            else:
+                print("⚠️  部分本地JS文件缺失，使用CDN")
+        else:
+            print("⚠️  本地assets文件夹不存在，使用CDN")
+        
+        # 生成HTML内容
+        html_content = self.create_html_template(self.nav_history, params, js_paths=js_paths)
         
         # 创建临时HTML文件 - 使用固定路径避免权限问题
         temp_html_path = f"{result_dir}/temp_chart.html"
@@ -1120,15 +1266,55 @@ class LowTTMPEStrategy:
 - **调仓频率**: 月度
 - **手续费率**: {self.transaction_cost*10000:.1f}‱
 
-## 核心业绩指标
+## 业绩表现分析
 """
         
         if self.nav_history:
             final_nav = self.nav_history[-1]['nav']
             total_return = (final_nav - 1) * 100
+            years = (pd.to_datetime(self.end_date) - pd.to_datetime(self.start_date)).days / 365.25
+            annual_return = (final_nav ** (1/years) - 1) * 100 if years > 0 else 0
+            
+            # 计算风险指标和盈亏分析
+            risk_metrics = self.calculate_risk_metrics()
+            profit_loss_stats = self.analyze_profit_loss_cycles()
+            
             readme_content += f"""- **总收益率**: {total_return:.2f}%
+- **年化收益率**: {annual_return:.2f}%
 - **最终净值**: {final_nav:.4f}
-- **调仓次数**: {len(self.positions)}次
+- **最大回撤**: {risk_metrics.get('max_drawdown', 0)*100:.2f}%
+- **夏普比率**: {risk_metrics.get('sharpe_ratio', 0):.2f}
+- **波动率（年化）**: {risk_metrics.get('volatility', 0)*100:.2f}%
+
+## 决策周期分析
+- **总调仓次数**: {len(self.positions)}次
+- **盈利周期**: {profit_loss_stats.get('profit_periods', 0)}次
+- **亏损周期**: {profit_loss_stats.get('loss_periods', 0)}次
+- **胜率**: {profit_loss_stats.get('profit_rate', 0)*100:.1f}%
+- **最大连续盈利**: {profit_loss_stats.get('max_consecutive_profit', 0)}期
+- **最大连续亏损**: {profit_loss_stats.get('max_consecutive_loss', 0)}期
+
+## 风险收益特征总结
+"""
+            
+            # 风险收益评价
+            if risk_metrics.get('sharpe_ratio', 0) > 1.0:
+                risk_comment = "夏普比率超过1.0，风险调整后收益表现良好"
+            elif risk_metrics.get('sharpe_ratio', 0) > 0.5:
+                risk_comment = "夏普比率适中，收益与风险较为平衡"
+            else:
+                risk_comment = "夏普比率偏低，收益相对风险可能不够理想"
+                
+            if profit_loss_stats.get('profit_rate', 0) > 0.6:
+                win_rate_comment = "胜率较高，策略稳定性良好"
+            elif profit_loss_stats.get('profit_rate', 0) > 0.4:
+                win_rate_comment = "胜率中等，需关注风险控制"
+            else:
+                win_rate_comment = "胜率偏低，建议优化选股条件"
+                
+            readme_content += f"""- {risk_comment}
+- {win_rate_comment}
+- 最大回撤{risk_metrics.get('max_drawdown', 0)*100:.1f}%，{'风险可控' if risk_metrics.get('max_drawdown', 0) < 0.2 else '需要关注回撤控制'}
 
 """
         
@@ -1144,7 +1330,7 @@ TTM EPS = 最近中报 + (上年年报 - 上年中报)
 TTM PE = 当前股价 / TTM EPS
 
 ## 文件说明
-- `backtest_results.xlsx`: 详细回测数据
+- `backtest_results.xlsx`: 详细回测数据（含盈亏周期分析）
 - `net_value_chart.png`: 净值走势图
 - `README.md`: 本报告文件
 """
