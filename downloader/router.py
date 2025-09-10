@@ -4,10 +4,10 @@
 import os
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from .db_init import DatabaseInitializer
-from .db_writer import DatabaseWriter
-from .a_stock import AStockDataFetcher
-from .cli_interface import CLIInterface
+from .sources.a_stock.initializer import DatabaseInitializer
+from .sources.a_stock.writer import DatabaseWriter
+from .sources.a_stock.fetcher import AStockDataFetcher
+from .sources.a_stock.interface import CLIInterface
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,9 @@ class DataRouter:
                     break
                 elif asset_choice == "a_stock":
                     self._handle_a_stock()
+                elif asset_choice is None:
+                    # 无效选择或未实现功能，继续循环
+                    continue
                     
             except KeyboardInterrupt:
                 print("\n👋 数据管理退出")
@@ -61,6 +64,9 @@ class DataRouter:
                     self._handle_kline_data()
                 elif data_type_choice == "financial_abstract":
                     self._handle_financial_abstract()
+                elif data_type_choice is None:
+                    # 无效选择，继续循环
+                    continue
                     
             except KeyboardInterrupt:
                 print("\n👋 返回资产选择")

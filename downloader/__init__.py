@@ -5,5 +5,7 @@
 """
 
 from .router import DataRouter
+from .visualizer import BacktestVisualizer
+from . import cli
 
-__all__ = ['DataRouter']
+__all__ = ['DataRouter', 'BacktestVisualizer', 'cli']
