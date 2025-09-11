@@ -200,23 +200,42 @@ class LowTTMPEStrategy:
     
     def select_stocks(self, selection_date):
         """选股函数：选择TTM PE最低的10只股票"""
-        print(f"🔍 {selection_date} 开始选股...")
+        # 构建筛选信息
+        filter_info = [f"市值≥{self.min_market_cap}亿"]
+        if self.min_price is not None:
+            filter_info.append(f"股价≥{self.min_price}元")
+        if self.max_price is not None:
+            filter_info.append(f"股价≤{self.max_price}元")
         
-        # 获取候选股票池：主板+市值>100亿
-        query = """
+        print(f"🔍 {selection_date} 开始选股... (筛选条件: {', '.join(filter_info)})")
+        
+        # 构建动态SQL查询：主板+市值+价格筛选
+        query_conditions = [
+            "(bi.stock_code LIKE '6%' OR bi.stock_code LIKE '0%')",
+            "LENGTH(bi.stock_code) = 6",
+            "bi.total_market_value >= ?",
+            "kl.trade_date = ?"
+        ]
+        params = [self.min_market_cap * 100000000, selection_date]
+        
+        # 添加价格筛选条件
+        if self.min_price is not None:
+            query_conditions.append("kl.close_price >= ?")
+            params.append(self.min_price)
+        if self.max_price is not None:
+            query_conditions.append("kl.close_price <= ?")
+            params.append(self.max_price)
+        
+        query = f"""
         SELECT bi.stock_code, bi.stock_name, 
                bi.total_market_value/100000000 as market_cap_yi,
                kl.close_price
         FROM stock_basic_info bi
         INNER JOIN stock_daily_kline kl ON bi.stock_code = kl.stock_code 
-        WHERE (bi.stock_code LIKE '6%' OR bi.stock_code LIKE '0%')
-          AND LENGTH(bi.stock_code) = 6
-          AND bi.total_market_value >= ?
-          AND kl.trade_date = ?
+        WHERE {' AND '.join(query_conditions)}
         """
         
-        candidates = pd.read_sql(query, self.conn, 
-                               params=[self.min_market_cap * 100000000, selection_date])
+        candidates = pd.read_sql(query, self.conn, params=params)
         
         if len(candidates) == 0:
             print(f"❌ {selection_date} 无可选股票")
@@ -288,6 +307,8 @@ class LowTTMPEStrategy:
         
         print(f"✅ {selection_date} 成功选出 {len(selected)} 只股票")
         print(f"   TTM PE范围: {selected['ttm_pe'].min():.2f} - {selected['ttm_pe'].max():.2f}")
+        if not selected.empty:
+            print(f"   股价范围: {selected['close_price'].min():.2f} - {selected['close_price'].max():.2f}元")
         
         return selected
     
@@ -297,6 +318,8 @@ class LowTTMPEStrategy:
                      transaction_cost: float = 0.0001, # 手续费率，范围：0-0.005，默认万1
                      start_date: str = "2020-01-01",  # 回测开始日期，格式：YYYY-MM-DD
                      end_date: str = "2025-06-30",    # 回测结束日期，格式：YYYY-MM-DD
+                     min_price: float = None,          # 最低股价，范围：1-100，None表示不限制
+                     max_price: float = None,          # 最高股价，范围：5-1000，None表示不限制
                      # 向后兼容的年份参数
                      start_year: int = None,          # 已废弃，请使用start_date
                      end_year: int = None             # 已废弃，请使用end_date
@@ -316,7 +339,15 @@ class LowTTMPEStrategy:
             回测开始日期，格式：YYYY-MM-DD
         end_date : str
             回测结束日期，格式：YYYY-MM-DD
+        min_price : float, optional
+            最低股价筛选，低于此价格的股票被排除，None表示不限制
+        max_price : float, optional
+            最高股价筛选，高于此价格的股票被排除，None表示不限制
         """
+        
+        # 参数验证
+        if min_price is not None and max_price is not None and min_price > max_price:
+            raise ValueError(f"最低股价({min_price})不能大于最高股价({max_price})")
         
         # 向后兼容处理（优先使用日期参数）
         if start_year is not None and start_date == "2020-01-01":
@@ -330,9 +361,19 @@ class LowTTMPEStrategy:
         self.transaction_cost = transaction_cost
         self.start_date = start_date
         self.end_date = end_date
+        self.min_price = min_price
+        self.max_price = max_price
+        
+        # 构建价格筛选信息
+        price_filter = []
+        if min_price is not None:
+            price_filter.append(f"≥{min_price}元")
+        if max_price is not None:
+            price_filter.append(f"≤{max_price}元")
+        price_info = f", 股价{'/'.join(price_filter)}" if price_filter else ""
         
         print(f"🚀 开始回测: {self.strategy_name}")
-        print(f"📊 参数设置: 市值>{min_market_cap}亿, 选股{stock_count}只, 手续费{transaction_cost*10000:.1f}‱")
+        print(f"📊 参数设置: 市值>{min_market_cap}亿, 选股{stock_count}只, 手续费{transaction_cost*10000:.1f}‱{price_info}")
         print(f"⏰ 回测期间: {self.start_date} 至 {self.end_date}")
         
         # 获取交易日期
@@ -603,8 +644,18 @@ class LowTTMPEStrategy:
         ws_overview[f'A{current_row}'].font = Font(bold=True, size=14)
         current_row += 2
         
+        # 构建选股范围描述
+        range_desc = f"沪深主板股票（6开头+0开头），市值≥{self.min_market_cap}亿元"
+        if self.min_price is not None or self.max_price is not None:
+            price_conditions = []
+            if self.min_price is not None:
+                price_conditions.append(f"股价≥{self.min_price}元")
+            if self.max_price is not None:
+                price_conditions.append(f"股价≤{self.max_price}元")
+            range_desc += f"，{', '.join(price_conditions)}"
+        
         strategy_description = [
-            ["选股范围", f"沪深主板股票（6开头+0开头），市值≥{self.min_market_cap}亿元"],
+            ["选股范围", range_desc],
             ["选股指标", "TTM PE（滚动12个月市盈率）"],
             ["选股逻辑", f"按TTM PE升序排列，选择前{self.stock_count}只股票"],
             ["权重分配", "等权重配置，每只股票10%"],
@@ -626,10 +677,19 @@ class LowTTMPEStrategy:
         parameters = [
             ["最低市值要求", f"{self.min_market_cap}亿元"],
             ["选股数量", f"{self.stock_count}只"],
-            ["手续费率", f"{self.transaction_cost*10000:.1f}‱"],
+            ["手续费率", f"{self.transaction_cost*10000:.1f}‱"]
+        ]
+        
+        # 添加价格参数（如果设置了）
+        if self.min_price is not None:
+            parameters.append(["最低股价要求", f"{self.min_price}元"])
+        if self.max_price is not None:
+            parameters.append(["最高股价限制", f"{self.max_price}元"])
+        
+        parameters.extend([
             ["风险控制", "无最大回撤限制"],
             ["股票池范围", "沪深主板（排除ST、停牌股票）"]
-        ]
+        ])
         
         for key, value in parameters:
             ws_overview[f'A{current_row}'] = key
@@ -756,6 +816,7 @@ class LowTTMPEStrategy:
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
             """
 
+        # 构建HTML内容，确保变量正确插入
         html_content = f"""
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -935,7 +996,17 @@ class LowTTMPEStrategy:
                     <h4>📊 基本参数</h4>
                     <div class="param-item">最低市值: {params['min_market_cap']}亿元</div>
                     <div class="param-item">选股数量: {params['stock_count']}只</div>
-                    <div class="param-item">手续费率: {params['transaction_cost']*10000:.1f}‱</div>
+                    <div class="param-item">手续费率: {params['transaction_cost']*10000:.1f}‱</div>"""
+        
+        # 添加价格参数（如果设置了）
+        if self.min_price is not None:
+            html_content += f"""
+                    <div class="param-item">最低股价: {self.min_price}元</div>"""
+        if self.max_price is not None:
+            html_content += f"""
+                    <div class="param-item">最高股价: {self.max_price}元</div>"""
+        
+        html_content += f"""
                 </div>
                 
                 <div class="param-group">
@@ -947,7 +1018,19 @@ class LowTTMPEStrategy:
                 <div class="param-group">
                     <h4>🎯 选股逻辑</h4>
                     <div class="param-item">沪深主板股票</div>
-                    <div class="param-item">市值≥{params['min_market_cap']}亿元</div>
+                    <div class="param-item">市值≥{params['min_market_cap']}亿元</div>"""
+        
+        # 添加价格筛选信息
+        if self.min_price is not None or self.max_price is not None:
+            price_conditions = []
+            if self.min_price is not None:
+                price_conditions.append(f"股价≥{self.min_price}元")
+            if self.max_price is not None:
+                price_conditions.append(f"股价≤{self.max_price}元")
+            html_content += f"""
+                    <div class="param-item">{', '.join(price_conditions)}</div>"""
+        
+        html_content += f"""
                     <div class="param-item">按TTM PE升序选股</div>
                     <div class="param-item">等权重配置</div>
                 </div>
@@ -1131,8 +1214,10 @@ class LowTTMPEStrategy:
                 }}
             }});
             
-            // 标记渲染完成
-            window.chartReady = true;
+            // 立即设置渲染完成标志（图表创建后1秒）
+            setTimeout(function() {{
+                window.chartReady = true;
+            }}, 1000);
         }});
     </script>
 </body>
@@ -1177,14 +1262,24 @@ class LowTTMPEStrategy:
             annotation_js = os.path.join(assets_dir, "chartjs-plugin-annotation.min.js")
             
             if all(os.path.exists(f) for f in [chart_js, adapter_js, annotation_js]):
+                # 检查文件大小
+                chart_size = os.path.getsize(chart_js) // 1024
+                adapter_size = os.path.getsize(adapter_js) // 1024
+                annotation_size = os.path.getsize(annotation_js) // 1024
+                
                 js_paths = {
                     'chart': chart_js,
                     'adapter': adapter_js,
                     'annotation': annotation_js
                 }
-                print("📁 使用本地JS文件生成图表")
+                print(f"📁 使用本地JS文件生成图表")
+                print(f"   📦 Chart.js: {chart_size}KB")
+                print(f"   📦 Date adapter: {adapter_size}KB") 
+                print(f"   📦 Annotation plugin: {annotation_size}KB")
             else:
-                print("⚠️  部分本地JS文件缺失，使用CDN")
+                missing_files = [f for f in [chart_js, adapter_js, annotation_js] if not os.path.exists(f)]
+                print(f"⚠️  部分本地JS文件缺失，使用CDN")
+                print(f"   缺失文件: {[os.path.basename(f) for f in missing_files]}")
         else:
             print("⚠️  本地assets文件夹不存在，使用CDN")
         
@@ -1207,14 +1302,20 @@ class LowTTMPEStrategy:
     
     def _screenshot_with_playwright(self, html_path, output_path):
         """使用Playwright将HTML转换为图片"""
+        import time
+        start_time = time.time()
+        
         with sync_playwright() as p:
             browser = None
             try:
+                print(f"🚀 启动浏览器...")
+                browser_start = time.time()
                 browser = p.chromium.launch(
                     headless=True,
                     args=['--no-sandbox', '--disable-dev-shm-usage']
                 )
                 page = browser.new_page()
+                print(f"   浏览器启动耗时: {time.time() - browser_start:.2f}s")
                 
                 # 设置更长的超时时间
                 page.set_default_navigation_timeout(60000)  # 60秒
@@ -1223,17 +1324,35 @@ class LowTTMPEStrategy:
                 # 设置页面大小
                 page.set_viewport_size({"width": 1600, "height": 900})
                 
-                # 加载HTML文件，快速提交后依赖 chartReady 判断渲染完成
+                # 加载HTML文件
+                print(f"📄 加载HTML文件...")
+                load_start = time.time()
                 page.goto(f"file://{html_path}", wait_until="commit")
+                print(f"   HTML加载耗时: {time.time() - load_start:.2f}s")
                 
-                # 等待更长时间确保CDN资源加载
-                page.wait_for_timeout(5000)
+                # 检查JS资源加载状态
+                print(f"📦 检查JS资源加载...")
+                js_check_start = time.time()
                 
-                # 等待图表渲染完成，增加超时时间
+                # 检查Chart.js是否加载
+                chart_loaded = page.evaluate("typeof Chart !== 'undefined'")
+                print(f"   Chart.js加载: {'✅' if chart_loaded else '❌'}")
+                
+                if chart_loaded:
+                    # 检查插件是否加载
+                    annotation_loaded = page.evaluate("Chart.registry && Chart.registry.plugins && Chart.registry.plugins.get('annotation')")
+                    print(f"   Annotation插件: {'✅' if annotation_loaded else '❌'}")
+                    
+                print(f"   JS检查耗时: {time.time() - js_check_start:.2f}s")
+                
+                # 等待图表渲染完成
+                print(f"⏳ 等待图表渲染...")
+                render_start = time.time()
                 try:
                     page.wait_for_function("window.chartReady === true", timeout=30000)
+                    print(f"   ✅ 图表渲染完成，耗时: {time.time() - render_start:.2f}s")
                 except Exception:
-                    print("⚠️  图表渲染检测超时，但继续尝试截图...")
+                    print(f"   ⚠️  图表渲染检测超时（{time.time() - render_start:.2f}s），但继续尝试截图...")
                     # 再等待一下，可能图表仍在渲染
                     page.wait_for_timeout(3000)
                 
@@ -1241,12 +1360,18 @@ class LowTTMPEStrategy:
                 page.wait_for_timeout(1000)
                 
                 # 截图
+                print(f"📸 开始截图...")
+                screenshot_start = time.time()
                 page.screenshot(
                     path=output_path,
                     full_page=True
                 )
+                print(f"   截图耗时: {time.time() - screenshot_start:.2f}s")
                 
                 browser.close()
+                
+                total_time = time.time() - start_time
+                print(f"🎯 图表生成总耗时: {total_time:.2f}s")
                 
             except Exception as e:
                 if browser is not None:
@@ -1256,12 +1381,22 @@ class LowTTMPEStrategy:
     
     def generate_readme(self, result_dir):
         """生成README文件"""
+        # 构建选股范围描述
+        range_desc = f"沪深主板市值≥{self.min_market_cap}亿股票"
+        if self.min_price is not None or self.max_price is not None:
+            price_conditions = []
+            if self.min_price is not None:
+                price_conditions.append(f"股价≥{self.min_price}元")
+            if self.max_price is not None:
+                price_conditions.append(f"股价≤{self.max_price}元")
+            range_desc += f"，{', '.join(price_conditions)}"
+        
         readme_content = f"""# {self.strategy_name} 回测报告
 
 ## 策略概述
 - **策略名称**: {self.strategy_name}
 - **回测期间**: {self.start_date} 至 {self.end_date}
-- **选股范围**: 沪深主板市值≥{self.min_market_cap}亿股票
+- **选股范围**: {range_desc}
 - **选股数量**: {self.stock_count}只
 - **调仓频率**: 月度
 - **手续费率**: {self.transaction_cost*10000:.1f}‱
@@ -1357,8 +1492,12 @@ if __name__ == "__main__":
     STOCK_COUNT = 10            # 选股数量 - 范围：5-30，建议10-20
     TRANSACTION_COST = 0.0001   # 交易手续费率 - 万分之一，可根据券商调整
     
+    # 股价筛选参数 (可选)
+    MIN_PRICE = 1.0            # 最低股价要求(元) - 范围：1-100，None表示不限制
+    MAX_PRICE = 10.0            # 最高股价限制(元) - 范围：5-1000，None表示不限制
+    
     # 回测时间范围 (精确到月)
-    START_DATE = "2020-01-01"   # 回测开始日期 - 格式：YYYY-MM-DD
+    START_DATE = "2015-01-01"   # 回测开始日期 - 格式：YYYY-MM-DD
     END_DATE = "2025-06-30"     # 回测结束日期 - 格式：YYYY-MM-DD
     
     # ==================== 不同资金规模建议 ====================
@@ -1374,6 +1513,10 @@ if __name__ == "__main__":
     print(f"   最低市值: {MIN_MARKET_CAP}亿元")  
     print(f"   选股数量: {STOCK_COUNT}只")
     print(f"   手续费率: {TRANSACTION_COST*10000:.1f}‱")
+    if MIN_PRICE is not None:
+        print(f"   最低股价: {MIN_PRICE}元")
+    if MAX_PRICE is not None:
+        print(f"   最高股价: {MAX_PRICE}元")
     print(f"   回测期间: {START_DATE} 至 {END_DATE}")
     print(f"\n💡 建议资金规模: {STOCK_COUNT*2}万元以上")
     print("=" * 60)
@@ -1384,5 +1527,7 @@ if __name__ == "__main__":
         stock_count=STOCK_COUNT, 
         transaction_cost=TRANSACTION_COST,
         start_date=START_DATE,
-        end_date=END_DATE
+        end_date=END_DATE,
+        min_price=MIN_PRICE,
+        max_price=MAX_PRICE
     )
