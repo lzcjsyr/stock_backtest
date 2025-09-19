@@ -379,6 +379,7 @@ class LowTTMPEStrategy:
         # 获取交易日期
         trading_dates = self.get_trading_dates()
         month_end_dates = self.get_month_end_dates(trading_dates)
+        final_trading_date = trading_dates[-1]
         
         # 初始化
         current_nav = 1.0
@@ -447,28 +448,38 @@ class LowTTMPEStrategy:
             # 更新上一期选股日期
             prev_selection_date = selection_date
         
-        # 计算最后一期收益（从最后一次选股到回测结束日）
-        if not current_positions.empty and prev_selection_date and prev_selection_date != self.end_date:
+        # 计算最后一期收益（从最后一次选股到最后一个交易日）
+        if not current_positions.empty and prev_selection_date and prev_selection_date < final_trading_date:
             final_return = self.calculate_period_return(
-                current_positions, prev_selection_date, self.end_date)
+                current_positions, prev_selection_date, final_trading_date)
             current_nav *= (1 + final_return - self.transaction_cost)
             print(f"📈 最后一期收益率: {final_return*100:.2f}%, 净值: {current_nav:.4f}")
-            
+
             # 记录最后一期收益
             self.period_returns.append({
                 'period': len(self.positions) + 1,
                 'start_date': prev_selection_date,
-                'end_date': self.end_date,
+                'end_date': final_trading_date,
                 'return': final_return,
                 'nav_before': current_nav / (1 + final_return - self.transaction_cost),
                 'nav_after': current_nav
             })
-            
+
             # 记录最后净值
-            self.nav_history.append({
-                'date': self.end_date,
-                'nav': current_nav
-            })
+            if self.nav_history and self.nav_history[-1]['date'] == final_trading_date:
+                self.nav_history[-1]['nav'] = current_nav
+            else:
+                self.nav_history.append({
+                    'date': final_trading_date,
+                    'nav': current_nav
+                })
+        else:
+            # 确保净值曲线以最后一个交易日收尾
+            if self.nav_history and self.nav_history[-1]['date'] != final_trading_date:
+                self.nav_history.append({
+                    'date': final_trading_date,
+                    'nav': current_nav
+                })
         
         
         print(f"\n🎯 回测完成!")
